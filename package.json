@@ -1,0 +1,13 @@
+{
+  "name": "nightglass",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.5.0"},
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "NODE_ENV=development node --watch server.mjs",
+    "test": "node --test",
+    "smoke": "node scripts/smoke-test.mjs"
+  }
+}
