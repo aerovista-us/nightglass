@@ -1,0 +1,37 @@
+services:
+  nightglass:
+    build: .
+    container_name: nightglass
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      ENGINE_MODE: ${ENGINE_MODE:-live}
+      SPIDERFOOT_URL: http://spiderfoot:5001
+      JOB_TIMEOUT_MS: ${JOB_TIMEOUT_MS:-120000}
+    ports:
+      - "127.0.0.1:${NIGHTGLASS_PORT:-3088}:3000"
+    volumes:
+      - nightglass-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  spiderfoot:
+    profiles: ["spiderfoot"]
+    build:
+      context: https://github.com/smicallef/spiderfoot.git#0f815a203afebf05c98b605dba5cf0475a0ee5fd
+    container_name: nightglass-spiderfoot
+    restart: unless-stopped
+    expose:
+      - "5001"
+    volumes:
+      - spiderfoot-data:/var/lib/spiderfoot
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  nightglass-data:
+  spiderfoot-data:
