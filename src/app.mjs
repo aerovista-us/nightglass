@@ -7,6 +7,7 @@ import { normalizeFinding } from './normalize/finding.mjs';
 import { ensureSubjectEntity, hashRecord, persistNormalizedFinding, stableJson } from './store/findings.mjs';
 import { buildTracePlan, traceProfiles } from './orchestration/trace.mjs';
 import { captureConfigured, requestCapture } from './capture/client.mjs';
+import { validateVerificationStatus, verificationStates } from './review/verification.mjs';
 
 const publicDir = path.resolve('public');
 const json = (res, status, body) => {
@@ -109,7 +110,7 @@ function relationshipDetails(relationshipId) {
       FROM evidence WHERE ${parts.join(' OR ')} ORDER BY captured_at DESC
     `).all(...args);
   }
-  return { relationship, sources, evidence };
+  return { relationship, sources, evidence, verificationStates };
 }
 
 function validCaseObject(table, caseId, objectId) {
@@ -235,6 +236,28 @@ export async function handle(req, res) {
     if (m && req.method === 'GET') {
       const details = relationshipDetails(m[1]);
       return details ? json(res, 200, details) : json(res, 404, { error: 'Relationship not found' });
+    }
+    if (m && req.method === 'PATCH') {
+      const current = db.prepare('SELECT * FROM relationships WHERE id=?').get(m[1]);
+      if (!current) return json(res, 404, { error: 'Relationship not found' });
+      const body = await readJson(req);
+      const status = validateVerificationStatus(body.verificationStatus);
+      const actor = cleanText(body.actor, 120) || 'analyst';
+      const notes = cleanText(body.notes, 3000);
+      const reviewedAt = now();
+      db.prepare(`
+        UPDATE relationships SET verification_status=?, reviewed_at=?, reviewed_by=?, review_notes=? WHERE id=?
+      `).run(status, reviewedAt, actor, notes, current.id);
+      db.prepare('UPDATE cases SET updated_at=? WHERE id=?').run(reviewedAt, current.case_id);
+      audit({
+        caseId: current.case_id,
+        action: 'relationship.review',
+        objectType: 'relationship',
+        objectId: current.id,
+        actor,
+        metadata: { from: current.verification_status, to: status, notes }
+      });
+      return json(res, 200, relationshipDetails(current.id));
     }
 
     m = p.match(/^\/api\/cases\/([^/]+)\/subjects$/);
