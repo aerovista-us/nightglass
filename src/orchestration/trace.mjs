@@ -37,6 +37,7 @@ export function buildTracePlan({ profile = 'standard', targetType, engines }) {
 
   const scheduled = [];
   const skipped = [];
+  const live = (process.env.ENGINE_MODE || 'mock') === 'live';
   for (const engine of requested) {
     const meta = engines[engine];
     if (!meta) {
@@ -51,8 +52,12 @@ export function buildTracePlan({ profile = 'standard', targetType, engines }) {
       skipped.push({ engine, reason: meta.companion ? 'companion_adapter_not_implemented' : 'orchestration_disabled' });
       continue;
     }
+    if (live && meta.optional && meta.configured === false) {
+      skipped.push({ engine, reason: 'provider_disabled_or_unconfigured' });
+      continue;
+    }
     const missing = (meta.requiresEnv || []).filter((name) => !String(process.env[name] || '').trim());
-    if (missing.length && (process.env.ENGINE_MODE || 'mock') === 'live') {
+    if (missing.length && live) {
       skipped.push({ engine, reason: 'configuration_missing', missing });
       continue;
     }
