@@ -18,12 +18,16 @@ jobs:
       - run: node --check server.mjs
       - run: node --check src/app.mjs
       - run: node --check src/db.mjs
+      - run: node --check src/capture/client.mjs
       - run: node --check src/engines/registry.mjs
       - run: node --check src/engines/shadowbroker/client.mjs
       - run: node --check src/normalize/finding.mjs
       - run: node --check src/orchestration/trace.mjs
       - run: node --check src/records/sec-company.mjs
       - run: node --check src/store/findings.mjs
+      - run: node --check capture-worker/security.mjs
+      - run: node --check capture-worker/capture.mjs
+      - run: node --check capture-worker/server.mjs
       - run: node --check public/app.js
       - run: npm test
       - run: npm run smoke
@@ -38,3 +42,9 @@ jobs:
           context: .
           push: false
           tags: aerovista/nightglass:ci
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: capture-worker/Dockerfile
+          push: false
+          tags: aerovista/nightglass-capture:ci
