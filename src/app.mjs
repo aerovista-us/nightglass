@@ -6,6 +6,7 @@ import { engines, runEngine } from './engines/registry.mjs';
 import { normalizeFinding } from './normalize/finding.mjs';
 import { ensureSubjectEntity, hashRecord, persistNormalizedFinding, stableJson } from './store/findings.mjs';
 import { buildTracePlan, traceProfiles } from './orchestration/trace.mjs';
+import { captureConfigured, requestCapture } from './capture/client.mjs';
 
 const publicDir = path.resolve('public');
 const json = (res, status, body) => {
@@ -104,7 +105,7 @@ function relationshipDetails(relationshipId) {
       args.push(...findingIds);
     }
     evidence = db.prepare(`
-      SELECT id,url,title,notes,sha256,captured_at,finding_id,source_id,provider,content_sha256,verification_status
+      SELECT id,url,title,notes,sha256,captured_at,finding_id,source_id,provider,content_sha256,verification_status,capture_id,snapshot_ref,screenshot_ref
       FROM evidence WHERE ${parts.join(' OR ')} ORDER BY captured_at DESC
     `).all(...args);
   }
@@ -118,20 +119,83 @@ function validCaseObject(table, caseId, objectId) {
   return !!db.prepare(`SELECT id FROM ${table} WHERE id=? AND case_id=?`).get(objectId, caseId);
 }
 
+function storeCapturedEvidence({ caseId, body, capture }) {
+  const findingId = cleanText(body.findingId, 100);
+  const sourceId = cleanText(body.sourceId, 100);
+  if (!validCaseObject('findings', caseId, findingId)) throw new Error('Finding does not belong to case');
+  if (!validCaseObject('sources', caseId, sourceId)) throw new Error('Source does not belong to case');
+
+  const title = cleanText(body.title, 300) || `Captured ${new URL(capture.finalUrl).hostname}`;
+  const notes = cleanText(body.notes, 5000);
+  const normalized = {
+    requestedUrl: capture.requestedUrl,
+    finalUrl: capture.finalUrl,
+    redirectChain: capture.redirectChain,
+    status: capture.status,
+    contentType: capture.contentType,
+    bytes: capture.bytes,
+    snapshotRef: capture.snapshotRef,
+    screenshotRef: capture.screenshotRef,
+    screenshotStatus: capture.screenshotStatus
+  };
+  const canonical = {
+    caseId,
+    findingId,
+    sourceId,
+    url: capture.finalUrl,
+    title,
+    notes,
+    provider: 'capture-worker',
+    verificationStatus: 'observed',
+    query: { requestedUrl: capture.requestedUrl },
+    normalized,
+    headers: capture.headers,
+    contentSha256: capture.contentSha256,
+    captureId: capture.captureId,
+    capturedAt: capture.capturedAt
+  };
+  const evidenceSha = hashRecord(canonical);
+  const evidenceId = id('evidence');
+
+  db.prepare(`
+    INSERT INTO evidence (
+      id,case_id,url,title,notes,sha256,captured_at,finding_id,source_id,provider,
+      query_json,raw_json,normalized_json,headers_json,content_sha256,verification_status,
+      capture_id,snapshot_ref,screenshot_ref
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    evidenceId, caseId, capture.finalUrl, title, notes, evidenceSha, capture.capturedAt,
+    findingId, sourceId, 'capture-worker', stableJson({ requestedUrl: capture.requestedUrl }),
+    stableJson(capture), stableJson(normalized), stableJson(capture.headers || {}), capture.contentSha256,
+    'observed', capture.captureId, capture.snapshotRef || '', capture.screenshotRef || ''
+  );
+  db.prepare('UPDATE cases SET updated_at=? WHERE id=?').run(now(), caseId);
+  audit({
+    caseId,
+    action: 'evidence.capture',
+    objectType: 'evidence',
+    objectId: evidenceId,
+    actor: cleanText(body.actor, 120) || 'analyst',
+    metadata: { captureId: capture.captureId, contentSha256: capture.contentSha256, finalUrl: capture.finalUrl }
+  });
+  return db.prepare('SELECT * FROM evidence WHERE id=?').get(evidenceId);
+}
+
 export async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
   try {
     if (req.method === 'GET' && p === '/api/health') {
       const schema = db.prepare("SELECT value FROM schema_meta WHERE key='schema_version'").get()?.value || '1';
-      return json(res, 200, { ok: true, version: '0.2.0', schemaVersion: schema, engineMode: process.env.ENGINE_MODE || 'mock' });
+      return json(res, 200, { ok: true, version: '0.2.0', schemaVersion: schema, engineMode: process.env.ENGINE_MODE || 'mock', captureConfigured: captureConfigured() });
     }
     if (req.method === 'GET' && p === '/api/engines') {
       return json(res, 200, {
         engines,
         traceProfiles,
         spiderfootUrl: process.env.SPIDERFOOT_URL || '',
-        shadowbrokerUrl: process.env.SHADOWBROKER_URL || 'http://127.0.0.1:8000'
+        shadowbrokerUrl: process.env.SHADOWBROKER_URL || 'http://127.0.0.1:8000',
+        captureConfigured: captureConfigured()
       });
     }
 
@@ -228,6 +292,30 @@ export async function handle(req, res) {
     if (m && req.method === 'GET') {
       const job = db.prepare('SELECT * FROM jobs WHERE id=?').get(m[1]);
       return job ? json(res, 200, { job }) : json(res, 404, { error: 'Job not found' });
+    }
+
+    m = p.match(/^\/api\/cases\/([^/]+)\/capture$/);
+    if (m && req.method === 'POST') {
+      const caseId = m[1];
+      if (!caseExists(caseId)) return json(res, 404, { error: 'Case not found' });
+      if (!captureConfigured()) return json(res, 503, { error: 'Capture worker is not configured' });
+      const b = await readJson(req);
+      const requestedUrl = validateHttpUrl(b.url);
+      const capture = await requestCapture(requestedUrl);
+      const evidence = storeCapturedEvidence({ caseId, body: b, capture });
+      return json(res, 201, {
+        evidence,
+        capture: {
+          captureId: capture.captureId,
+          finalUrl: capture.finalUrl,
+          status: capture.status,
+          contentType: capture.contentType,
+          bytes: capture.bytes,
+          contentSha256: capture.contentSha256,
+          snapshotRef: capture.snapshotRef,
+          screenshotStatus: capture.screenshotStatus
+        }
+      });
     }
 
     m = p.match(/^\/api\/cases\/([^/]+)\/evidence$/);
