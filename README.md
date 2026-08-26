@@ -53,9 +53,10 @@ Then open `http://127.0.0.1:3000`.
 Nightglass
 ├── CASES       investigation workspace
 ├── TRACE       controlled local enrichment
+├── SIGNAL      optional upstream intelligence providers
 ├── GRAPH       entity relationships
 ├── LEDGER      evidence + provenance
-├── RECORDS     future public-record connectors
+├── RECORDS     public-record connectors
 ├── PULSE       future monitoring
 └── GEO         reserved; not deployed in v0.1
 ```
@@ -68,4 +69,4 @@ Nightglass is intended for lawful, authorized investigations. Do not use it to h
 
 Do not expose the application directly to the public Internet. The default Compose configuration binds Nightglass to loopback. Put it behind an authenticated reverse proxy or SSO layer for remote access.
 
-See [`docs/SECURITY.md`](docs/SECURITY.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), and [`docs/ROADMAP.md`](docs/ROADMAP.md).
+See [`docs/SECURITY.md`](docs/SECURITY.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), and the canonical [`docs/roadmap.md`](docs/roadmap.md).
