@@ -8,6 +8,7 @@
     "start": "node server.mjs",
     "dev": "NODE_ENV=development node --watch server.mjs",
     "test": "node --test",
-    "smoke": "node scripts/smoke-test.mjs"
+    "smoke": "node scripts/smoke-test.mjs",
+    "signal:check": "node scripts/signal-check.mjs"
   }
 }
