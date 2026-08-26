@@ -13,7 +13,7 @@ const profiles = Object.freeze({
     username: ['sherlock', 'shadowbroker'],
     domain: ['shadowbroker'],
     ip: ['shadowbroker'],
-    company: ['shadowbroker'],
+    company: ['shadowbroker', 'sec'],
     person: ['shadowbroker'],
     phone: []
   },
@@ -22,7 +22,7 @@ const profiles = Object.freeze({
     username: ['sherlock', 'shadowbroker', 'spiderfoot'],
     domain: ['shadowbroker', 'spiderfoot'],
     ip: ['shadowbroker'],
-    company: ['shadowbroker'],
+    company: ['shadowbroker', 'sec'],
     person: ['shadowbroker'],
     phone: []
   }
