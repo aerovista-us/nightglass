@@ -9,11 +9,46 @@ services:
       DATA_DIR: /data
       ENGINE_MODE: ${ENGINE_MODE:-live}
       SPIDERFOOT_URL: http://spiderfoot:5001
+      SHADOWBROKER_URL: ${SHADOWBROKER_URL:-http://host.docker.internal:8000}
+      SHADOWBROKER_HMAC_SECRET: ${SHADOWBROKER_HMAC_SECRET:-}
+      SHADOWBROKER_TIMEOUT_MS: ${SHADOWBROKER_TIMEOUT_MS:-15000}
+      SEC_USER_AGENT: ${SEC_USER_AGENT:-}
+      RECORDS_TIMEOUT_MS: ${RECORDS_TIMEOUT_MS:-15000}
+      CAPTURE_WORKER_URL: ${CAPTURE_WORKER_URL:-http://capture-worker:8090}
+      CAPTURE_WORKER_TOKEN: ${CAPTURE_WORKER_TOKEN:-}
+      CAPTURE_CLIENT_TIMEOUT_MS: ${CAPTURE_CLIENT_TIMEOUT_MS:-30000}
       JOB_TIMEOUT_MS: ${JOB_TIMEOUT_MS:-120000}
     ports:
       - "127.0.0.1:${NIGHTGLASS_PORT:-3088}:3000"
     volumes:
       - nightglass-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  capture-worker:
+    profiles: ["capture"]
+    build:
+      context: .
+      dockerfile: capture-worker/Dockerfile
+    container_name: nightglass-capture-worker
+    restart: unless-stopped
+    environment:
+      CAPTURE_HOST: 0.0.0.0
+      CAPTURE_PORT: 8090
+      CAPTURE_DIR: /captures
+      CAPTURE_WORKER_TOKEN: ${CAPTURE_WORKER_TOKEN:-}
+      CAPTURE_TIMEOUT_MS: ${CAPTURE_TIMEOUT_MS:-15000}
+      CAPTURE_MAX_BYTES: ${CAPTURE_MAX_BYTES:-5242880}
+      CAPTURE_MAX_REDIRECTS: ${CAPTURE_MAX_REDIRECTS:-4}
+    expose:
+      - "8090"
+    volumes:
+      - nightglass-captures:/captures
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -34,4 +69,5 @@ services:
 
 volumes:
   nightglass-data:
+  nightglass-captures:
   spiderfoot-data:
