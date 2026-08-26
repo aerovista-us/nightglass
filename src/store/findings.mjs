@@ -73,6 +73,76 @@ export function ensureSubjectEntity(caseId, type, value, label = '') {
   });
 }
 
+function relationEntity(input) {
+  if (!input?.type) return null;
+  const value = String(input.value ?? input.displayValue ?? input.canonicalValue ?? '').trim();
+  if (!value) return null;
+  return {
+    type: cleanText(input.type, 40),
+    canonicalValue: cleanText(input.canonicalValue || canonicalizeEntity(input.type, value), 500),
+    displayValue: cleanText(input.displayValue || value, 500),
+    label: cleanText(input.label || '', 160),
+    confidence: Number(input.confidence ?? 0.5),
+    verificationStatus: cleanText(input.verificationStatus || 'unverified', 40)
+  };
+}
+
+export function upsertRelationship(caseId, relation, sourceId = '') {
+  const from = relationEntity(relation?.from);
+  const to = relationEntity(relation?.to);
+  const type = cleanText(relation?.type, 60);
+  if (!from || !to || !type) return '';
+
+  const fromId = upsertEntity(caseId, from);
+  const toId = upsertEntity(caseId, to);
+  if (!fromId || !toId || fromId === toId) return '';
+
+  const conf = relation.confidence || {};
+  const sourceConfidence = Number(conf.source ?? relation.sourceConfidence ?? 0.5);
+  const matchConfidence = Number(conf.match ?? relation.matchConfidence ?? 0.5);
+  const correlationConfidence = Number(conf.correlation ?? relation.correlationConfidence ?? 0.5);
+  const verificationStatus = cleanText(relation.verificationStatus || 'unverified', 40);
+  const ts = now();
+
+  let row = db.prepare(`
+    SELECT * FROM relationships WHERE case_id=? AND from_entity_id=? AND to_entity_id=? AND type=?
+  `).get(caseId, fromId, toId, type);
+
+  if (row) {
+    db.prepare(`
+      UPDATE relationships
+      SET source_confidence=?, match_confidence=?, correlation_confidence=?, verification_status=?, last_seen_at=?
+      WHERE id=?
+    `).run(
+      Math.max(Number(row.source_confidence || 0), sourceConfidence),
+      Math.max(Number(row.match_confidence || 0), matchConfidence),
+      Math.max(Number(row.correlation_confidence || 0), correlationConfidence),
+      row.verification_status === 'unverified' ? verificationStatus : row.verification_status,
+      ts,
+      row.id
+    );
+  } else {
+    const relationshipId = id('relationship');
+    db.prepare(`
+      INSERT INTO relationships (
+        id,case_id,from_entity_id,to_entity_id,type,source_confidence,match_confidence,
+        correlation_confidence,verification_status,first_seen_at,last_seen_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      relationshipId, caseId, fromId, toId, type, sourceConfidence, matchConfidence,
+      correlationConfidence, verificationStatus, ts, ts
+    );
+    row = { id: relationshipId };
+  }
+
+  if (sourceId) {
+    db.prepare(`
+      INSERT OR IGNORE INTO relationship_sources (relationship_id,source_id) VALUES (?,?)
+    `).run(row.id, sourceId);
+  }
+  return row.id;
+}
+
 export function persistNormalizedFinding({ caseId, jobId, engine, normalized }) {
   const entityId = upsertEntity(caseId, normalized.entity);
   const findingId = id('finding');
@@ -135,5 +205,11 @@ export function persistNormalizedFinding({ caseId, jobId, engine, normalized }) 
     hashRecord(sourceRecord)
   );
 
-  return { findingId, entityId, sourceId };
+  const relationshipIds = [];
+  for (const relation of (normalized.relationships || []).slice(0, 100)) {
+    const relationshipId = upsertRelationship(caseId, relation, sourceId);
+    if (relationshipId) relationshipIds.push(relationshipId);
+  }
+
+  return { findingId, entityId, sourceId, relationshipIds };
 }
