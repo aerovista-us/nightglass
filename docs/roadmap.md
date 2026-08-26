@@ -5,7 +5,7 @@
 
 ## Architecture decision
 
-Nightglass remains the case-centric investigation system. ShadowBroker is integrated as an optional upstream intelligence provider through its documented HMAC-authenticated command channel. ShadowBroker source is not copied into Nightglass; the integration remains an API boundary so Nightglass stays independently maintainable and the AGPL-licensed upstream remains isolated.
+Nightglass remains the case-centric investigation system. ShadowBroker is an optional upstream intelligence provider through its documented HMAC-authenticated command channel. ShadowBroker source is not copied into Nightglass; the integration remains an API boundary so Nightglass stays independently maintainable and the AGPL-licensed upstream remains isolated.
 
 ```text
                     NIGHTGLASS
@@ -33,20 +33,24 @@ Nightglass remains the case-centric investigation system. ShadowBroker is integr
              Evidence + Provenance
 ```
 
-## New build order
+## Implementation checkpoint — 2026-08-25
+
+The reordered build has moved beyond planning. The core implementation through TRACE is now in the repository and the expanded CI smoke path passes.
 
 | Phase | Priority | Work | Status |
 | --- | --- | --- | --- |
-| 0 | P0 | Freeze and upgrade the Nightglass core schema/API | **In progress** |
-| 1 | P0 | Build `SIGNAL` ShadowBroker connector | **In progress** |
-| 2 | P0 | Universal normalization layer | **In progress** |
-| 3 | P0 | Strengthen evidence/provenance ledger | Next |
-| 4 | P1 | TRACE multi-engine orchestration | Next |
-| 5 | P1 | GRAPH entity resolution + evidence-backed relationships | Planned |
-| 6 | P1 | RECORDS connector registry | Planned |
-| 7 | P2 | PULSE watches + ShadowBroker SSE/event integration | Planned |
+| 0 | P0 | Freeze and upgrade core schema/API | **Implemented; legacy-v0.1 migration fixture still needed** |
+| 1 | P0 | `SIGNAL` ShadowBroker connector | **Implemented; live ShadowBroker QA pending** |
+| 2 | P0 | Universal normalization layer | **Implemented + tested** |
+| 3 | P0 | Evidence/provenance ledger | **Core implemented; isolated capture worker remains** |
+| 4 | P1 | TRACE multi-engine orchestration | **Implemented + smoke tested** |
+| 5 | P1 | GRAPH entities + evidence-backed relationships | **Storage/UI foundation implemented; richer extraction remains** |
+| 6 | P1 | RECORDS connector registry | **Registry + first SEC provider implemented; live provider QA pending** |
+| 7 | P2 | PULSE watches + ShadowBroker events | Planned |
 | 8 | P2 | Investigative dossier/report generation | Planned |
-| 9 | Later | GEO through selective ShadowBroker data, not a local planet stack | Deferred |
+| 9 | Later | Selective GEO through SIGNAL | Deferred |
+
+The passing smoke path now covers schema v2 startup, case creation, canonical subject/entity creation, Standard TRACE scheduling, normalized findings, source provenance, and evidence hashing.
 
 ---
 
@@ -54,7 +58,7 @@ Nightglass remains the case-centric investigation system. ShadowBroker is integr
 
 ## Goal
 
-Establish one stable Nightglass vocabulary before adding more collectors.
+Use one stable investigation vocabulary:
 
 ```text
 CASE
@@ -67,21 +71,21 @@ CASE
  └── JOB
 ```
 
-## Required schema behavior
+## Implemented
 
-- Every collection job belongs to a case.
-- A subject is the analyst-provided starting point.
-- An entity is a canonicalized identity or object discovered or supplied during the case.
-- Findings are assertions/results produced by an engine.
-- Sources record where a finding came from and preserve raw provider output.
-- Relationships connect canonical entities and carry their own confidence and provenance.
-- Evidence records preserve analyst-reviewed material and tamper-evident hashes.
-- Jobs retain engine, target, status, profile, errors, and timestamps.
-- Existing v0.1 databases must migrate additively without destructive resets.
+- SQLite schema v2 with additive migration columns.
+- Canonical case-scoped `entities` table.
+- `sources` provenance table.
+- `relationships` + `relationship_sources` tables.
+- `audit_log`.
+- Job profile/metadata fields.
+- Finding normalization/confidence fields.
+- Expanded evidence provenance fields.
+- Subject-to-canonical-entity linkage.
 
 ## Confidence model
 
-Do not collapse confidence into one unexplained number. Store distinct dimensions:
+Nightglass stores distinct dimensions rather than one unexplained score:
 
 - `source_confidence`
 - `match_confidence`
@@ -89,7 +93,7 @@ Do not collapse confidence into one unexplained number. Store distinct dimension
 - `freshness`
 - `verification_status`
 
-Suggested verification states:
+Verification states are intended to include:
 
 ```text
 unverified
@@ -99,12 +103,10 @@ conflicting
 rejected
 ```
 
-## Completion criteria
+## Remaining
 
-- Additive schema migration works against a v0.1 database.
-- Findings continue to render through the current API.
-- Canonical entities can be created/upserted without duplicates inside a case.
-- Source/provenance records can be attached to findings.
+- Add a CI fixture that starts from an actual v0.1 database and verifies the schema-v2 migration without data loss.
+- Add explicit schema version migration functions once schema v3 begins rather than letting additive migrations grow indefinitely.
 
 ---
 
@@ -112,9 +114,9 @@ rejected
 
 ## Goal
 
-Integrate ShadowBroker as an optional intelligence provider, not as a fork or embedded codebase.
+Use ShadowBroker as an optional intelligence provider, not as a fork or embedded codebase.
 
-## Connector layout
+## Implemented connector
 
 ```text
 src/engines/shadowbroker/
@@ -125,51 +127,21 @@ src/engines/shadowbroker/
 └── index.mjs
 ```
 
-## Initial passive capabilities
-
-Bring in only investigation-relevant passive lookups:
-
-- DNS
-- RDAP / WHOIS
-- certificate transparency
-- IP intelligence
-- ASN / BGP
-- sanctions
-- CVE context
-- GitHub account enrichment
-- leak/breach presence
-- entity lookup/profile later
-- news search later
-
-## Explicitly excluded from the first integration
-
-- subnet sweep / device discovery
-- aircraft tracking
-- vessels
-- satellites
-- CCTV
-- SAR
-- Meshtastic / APRS
-- InfoNet
-- Telegram feeds
-- prediction markets
-- financial feeds
-- global telemetry dumps
-- ShadowBroker frontend
-
-These may be useful later, but they are not required to prove Nightglass's investigation workflow.
-
-## Connection model
+Nightglass implements ShadowBroker's body-bound signing model:
 
 ```text
-Nightglass
-    │
-    │ HMAC-signed HTTP
-    ▼
-ShadowBroker backend
-    │
-    └── passive OSINT commands
+HMAC-SHA256(secret, METHOD|path|timestamp|nonce|sha256(body))
 ```
+
+Initial allowlisted passive lookups:
+
+- DNS
+- WHOIS / RDAP
+- certificate transparency
+- IP intelligence
+- sanctions search
+- GitHub account enrichment
+- leak/breach presence
 
 Configuration:
 
@@ -179,15 +151,16 @@ SHADOWBROKER_HMAC_SECRET=
 SHADOWBROKER_TIMEOUT_MS=15000
 ```
 
-When deployed in containers, use a private network/service URL and do not expose ShadowBroker's backend publicly.
+## Deliberately excluded
 
-## Completion criteria
+Nightglass does **not** expose ShadowBroker subnet sweep/device discovery commands. The first SIGNAL integration also leaves global telemetry, aircraft, ships, satellites, CCTV, SAR, Meshtastic/APRS, InfoNet, Telegram, markets, and the ShadowBroker frontend outside the Nightglass runtime.
 
-- Connector is optional and fails closed when unavailable.
-- Requests use ShadowBroker's documented body-bound HMAC-SHA256 signing.
-- Only allowlisted passive command/tool combinations are reachable from Nightglass.
-- Raw responses are preserved for provenance.
-- No active subnet sweep is exposed through Nightglass.
+## Remaining
+
+- Run a real Nightglass → ShadowBroker test against a deployed backend.
+- Verify local unsigned mode and remote HMAC mode.
+- Add provider health/capability status to the Nightglass UI.
+- Later add selected `find_entity`, entity profile, and news functionality when case workflows justify it.
 
 ---
 
@@ -195,9 +168,7 @@ When deployed in containers, use a private network/service URL and do not expose
 
 ## Goal
 
-All engines produce the same internal shape regardless of upstream tool.
-
-Target normalized record:
+All collectors terminate in one Nightglass shape.
 
 ```json
 {
@@ -216,20 +187,14 @@ Target normalized record:
 }
 ```
 
-Engines covered:
+## Implemented
 
-- Sherlock
-- Holehe
-- SpiderFoot when orchestration lands
-- ShadowBroker
-- future RECORDS connectors
-- future uploaded-document extraction
-
-## Completion criteria
-
-- `startJob()` no longer writes engine-specific shapes directly to the database.
-- Every stored finding receives normalized confidence/provenance fields.
-- Existing simple engine output remains backward compatible.
+- Universal `normalizeFinding()` path.
+- Existing Sherlock/Holehe/simple engine records remain compatible.
+- ShadowBroker results enter the same path.
+- RECORDS results enter the same path.
+- `startJob()` no longer writes raw engine-specific findings directly.
+- Raw and normalized representations are retained.
 
 ---
 
@@ -237,9 +202,11 @@ Engines covered:
 
 ## Goal
 
-Make provenance a first-class Nightglass capability before increasing source count.
+Preserve enough context to explain where each finding came from and what the analyst relied on.
 
-Every important finding should be able to preserve:
+## Implemented
+
+Each finding can now retain or link:
 
 ```text
 Case ID
@@ -249,34 +216,42 @@ Provider
 Source URL
 Query used
 Retrieved timestamp
-Raw response
+Raw provider response
 Normalized response
-SHA-256 record hash
-Investigator/actor
+Source SHA-256
 Confidence dimensions
 Verification state
-Notes
-Parent finding / relationship context
 ```
 
-Future isolated web capture worker should add:
+Manual evidence records additionally support:
 
 ```text
-HTML snapshot
-screenshot
-response headers
-retrieval timestamp
-content SHA-256
+Finding/source linkage
+Provider
+Query/raw/normalized metadata
+Headers metadata
+Optional content SHA-256
+Canonical evidence SHA-256
+Analyst notes
+Verification state
 ```
 
-The main Nightglass application must not become an arbitrary server-side URL fetcher. Web capture belongs in an isolated allowlisted worker with SSRF defenses and explicit analyst action.
+Audit events are written for case creation, subject creation, job completion/failure, TRACE start, and evidence creation.
 
-## Completion criteria
+## Next: isolated capture worker
 
-- Source record hash is deterministic.
-- Evidence record hash covers the canonical evidence metadata.
-- Audit entries are written for evidence creation and major case mutations.
-- Evidence can reference a finding/source.
+The main Nightglass process will **not** become an arbitrary URL fetcher. Web capture belongs in a separate worker with:
+
+- explicit analyst action
+- DNS/IP resolution checks
+- private/link-local/loopback blocking
+- redirect re-validation
+- scheme/port allowlists
+- response-size/time limits
+- HTML snapshot
+- screenshot
+- response headers
+- content SHA-256
 
 ---
 
@@ -286,7 +261,7 @@ The main Nightglass application must not become an arbitrary server-side URL fet
 
 Move from individual tool buttons to investigation profiles.
 
-Analyst provides a subject and selects:
+Implemented profiles:
 
 ```text
 QUICK TRACE
@@ -294,23 +269,23 @@ STANDARD TRACE
 DEEP TRACE
 ```
 
-Initial routing example:
+Current routing:
 
 | Target | Quick | Standard | Deep |
 | --- | --- | --- | --- |
-| email | Holehe + SIGNAL | Holehe + SIGNAL | Holehe + SIGNAL + SpiderFoot when supported |
-| username | Sherlock + SIGNAL | Sherlock + SIGNAL | Sherlock + SIGNAL + SpiderFoot when supported |
-| domain | SIGNAL | SIGNAL | SIGNAL + SpiderFoot when supported |
-| IP | SIGNAL | SIGNAL | SIGNAL + additional approved connectors |
-| company/person | SIGNAL sanctions/entity enrichment | SIGNAL | SIGNAL + RECORDS later |
+| email | Holehe + SIGNAL | Holehe + SIGNAL | Holehe + SIGNAL + SpiderFoot when adapter exists |
+| username | Sherlock + SIGNAL | Sherlock + SIGNAL | Sherlock + SIGNAL + SpiderFoot when adapter exists |
+| domain | SIGNAL | SIGNAL | SIGNAL + SpiderFoot when adapter exists |
+| IP | SIGNAL | SIGNAL | SIGNAL |
+| company | SIGNAL | SIGNAL + SEC RECORDS | SIGNAL + SEC RECORDS |
+| person | SIGNAL | SIGNAL | SIGNAL |
 
-Nightglass must select only engines that support the target type. A collector that is installed only as a companion must not be scheduled as though it has a working API adapter.
+`POST /api/cases/:caseId/trace` returns scheduled jobs and explicit skipped providers. Companion tools are not silently treated as integrated engines, and providers missing required live configuration are skipped with a reason.
 
-## Completion criteria
+## Remaining
 
-- `/trace` endpoint creates a deterministic set of jobs.
-- Profiles are defined in code, versionable, and testable.
-- Unsupported engines are returned as skipped with a reason rather than causing the whole trace to fail.
+- Build the real SpiderFoot scan adapter before adding it to orchestration.
+- Add job cancellation/retry and concurrency limits before Deep TRACE grows larger.
 
 ---
 
@@ -318,9 +293,9 @@ Nightglass must select only engines that support the target type. A collector th
 
 ## Goal
 
-Turn the relationship view from a visualization into an evidence-backed intelligence model.
+Make relationships evidence-backed investigation objects, not decorative lines.
 
-Canonical entity types initially:
+Canonical entity direction:
 
 ```text
 person
@@ -338,7 +313,7 @@ aircraft
 vessel
 ```
 
-Initial relationship vocabulary:
+Relationship vocabulary starts with:
 
 ```text
 uses
@@ -353,19 +328,20 @@ located_at
 observed_at
 ```
 
-Relationships carry:
+## Implemented foundation
 
-- source/match/correlation confidence
-- verification state
-- source IDs
-- evidence IDs
-- first/last observed timestamps
+- Canonical entity upsert/deduplication within a case.
+- Relationship table with independent confidence and verification fields.
+- Relationship-to-source join table.
+- Generic normalized relationship persistence path.
+- UI graph now renders canonical entities/relationships instead of every raw finding as a node.
 
-## Completion criteria
+## Remaining
 
-- Duplicate canonical entities merge within a case.
-- Relationships are queryable independently of findings.
-- The graph UI uses entities/relationships rather than drawing every raw finding around the case node.
+- Teach provider normalizers to emit specific relationships from structured results.
+- Add relationship evidence inspection in the UI.
+- Add analyst merge/split controls for ambiguous entity resolution.
+- Add conflict handling when two sources disagree.
 
 ---
 
@@ -373,26 +349,43 @@ Relationships carry:
 
 ## Goal
 
-Add authoritative/public-record sources that ShadowBroker does not replace.
+Add authoritative/public-record sources that SIGNAL does not replace.
 
-Candidate source classes:
+## Implemented
 
-- Secretary of State / corporate registrations
-- SEC filings
-- property records
-- licenses and permits
-- court/public records where lawful and available
-- sanctions/watchlists
-- professional registrations
-- government open-data datasets
+Provider registry:
 
-Create a provider registry with per-provider terms, attribution, rate limits, query types, and provenance behavior.
+```text
+src/records/registry.mjs
+```
 
-## Completion criteria
+First provider:
 
-- At least one structured government/public-record connector is implemented end-to-end.
-- Provider attribution is retained in every resulting source record.
-- No connector silently converts an inference into a verified fact.
+```text
+U.S. SEC Company Directory
+```
+
+The SEC connector:
+
+- uses a fixed SEC government endpoint rather than an analyst-controlled URL
+- searches company name/ticker
+- returns CIK/ticker/company findings
+- retains government-source attribution
+- assigns source and match confidence separately
+- requires `SEC_USER_AGENT` before live requests
+- participates in Standard/Deep company TRACE when configured
+
+## Next providers
+
+Evaluate in this order:
+
+1. state corporate-registration sources with stable/open interfaces
+2. SEC filing/submission enrichment from a resolved CIK
+3. professional-license/open-government datasets
+4. property/permit datasets where lawful and programmatically reliable
+5. court/public-record integrations only where terms and access model are appropriate
+
+Do not normalize a fuzzy name match into a verified identity without corroboration.
 
 ---
 
@@ -400,9 +393,7 @@ Create a provider registry with per-provider terms, attribution, rate limits, qu
 
 ## Goal
 
-Allow an investigation to become a watch after the initial case is built.
-
-Use ShadowBroker's event/SSE capability only after the case pipeline is mature.
+Turn selected case entities into explicit watches after the investigation pipeline is mature.
 
 ```text
 Provider update
@@ -418,19 +409,14 @@ correlate
 ledger + alert
 ```
 
-Watch examples:
+Use ShadowBroker SSE/event support selectively rather than polling the whole telemetry surface.
 
-- company
-- domain
-- username
-- ASN
-- aircraft/vessel only when GEO/SIGNAL expansion is intentionally enabled
+Completion requirements:
 
-## Completion criteria
-
-- Watches are explicit and scoped to a case.
-- Deduplication prevents repeated unchanged alerts.
-- New findings retain the event/provider provenance that triggered them.
+- watches are explicit and case-scoped
+- unchanged events deduplicate
+- every alert retains provider/event provenance
+- operators can disable a watch without deleting its history
 
 ---
 
@@ -438,9 +424,7 @@ Watch examples:
 
 ## Goal
 
-Produce an exportable, defensible investigative dossier rather than a pile of screenshots.
-
-Proposed report structure:
+Produce a defensible case dossier rather than a pile of screenshots.
 
 ```text
 NIGHTGLASS INVESTIGATIVE DOSSIER
@@ -463,7 +447,7 @@ Source Provenance
 Confidence Assessment
 ```
 
-Every report statement should be classifiable as one of:
+Report statements must be classifiable as:
 
 ```text
 FACT
@@ -475,7 +459,7 @@ CONFLICTING
 UNVERIFIED
 ```
 
-Exports later: JSON, CSV, HTML/PDF case dossier.
+Planned exports: JSON, CSV, HTML and PDF dossier.
 
 ---
 
@@ -483,19 +467,19 @@ Exports later: JSON, CSV, HTML/PDF case dossier.
 
 Nightglass will not initially ingest a planet-scale OpenStreetMap/PostGIS/Overpass stack.
 
-When geographic analysis is justified, prefer selective case-relevant queries through the SIGNAL provider boundary:
+When geographic analysis is justified:
 
 ```text
 Nightglass case
       ↓
 case-relevant entities/events
       ↓
-ShadowBroker GEO-capable data
+SIGNAL / ShadowBroker
       ↓
 GRAPH | TIMELINE | MAP
 ```
 
-This keeps the Nightglass core compact while preserving a path to richer geographic intelligence later.
+This keeps the core compact while preserving a later path to geographic intelligence.
 
 ---
 
@@ -503,13 +487,14 @@ This keeps the Nightglass core compact while preserving a path to richer geograp
 
 ## Security
 
-- Loopback/private-network exposure by default.
-- No arbitrary command execution.
-- No arbitrary server-side URL fetching in the main app.
-- Connector allowlists.
-- Timeouts and output limits on all external providers.
-- Secrets only from environment/secret management; never committed.
-- Audit significant case mutations.
+- loopback/private-network exposure by default
+- no arbitrary command execution
+- no arbitrary provider URLs in the main app
+- connector allowlists
+- outbound timeouts and result caps
+- environment/secret-manager credentials only
+- significant case mutations audited
+- SSO becomes mandatory before multi-user/external exposure
 
 ## Legal/ethical boundary
 
@@ -517,18 +502,22 @@ Nightglass is for lawful, authorized fraud prevention, compliance, due diligence
 
 ## Licensing
 
-ShadowBroker is AGPL-3.0. Keep the Nightglass integration at an external service/API boundary. Do not copy ShadowBroker implementation source into Nightglass. Preserve upstream attribution and evaluate AGPL obligations before distributing a modified ShadowBroker service.
+ShadowBroker is AGPL-3.0. Keep the integration at an external service/API boundary. Do not copy ShadowBroker implementation source into Nightglass. Preserve upstream attribution and evaluate AGPL obligations before distributing a modified ShadowBroker service.
 
 ---
 
-# Immediate execution queue
+# Next execution queue
 
-1. **Phase 0:** migrate schema and introduce canonical entities/sources/confidence fields.
-2. **Phase 1:** add allowlisted passive ShadowBroker SIGNAL adapter.
-3. **Phase 2:** route all engine findings through a universal normalizer.
-4. **Phase 3:** upgrade ledger persistence and audit events.
-5. **Phase 4:** add Quick / Standard / Deep TRACE orchestration API.
-6. **Phase 5:** convert graph storage/UI to canonical entities + relationships.
-7. **Phase 6:** implement first public-record provider.
-8. Move SSO ahead of any multi-user or externally reachable deployment.
-9. Keep PULSE, dossiers, and GEO behind the above foundation.
+With Phases 0–4 substantially implemented, continue in this order:
+
+1. **Live SIGNAL QA** — deploy/connect ShadowBroker and test passive lookup + HMAC paths.
+2. **Legacy migration test** — construct a v0.1 SQLite fixture and prove schema-v2 no-loss upgrade in CI.
+3. **GRAPH enrichment** — emit relationships from structured SIGNAL/RECORDS results and expose provenance on graph edges.
+4. **LEDGER capture worker** — isolated snapshot/screenshot worker with SSRF protections.
+5. **RECORDS expansion** — add the next authoritative provider after SEC.
+6. **SpiderFoot adapter** — only then allow it into Deep TRACE.
+7. **Operational controls** — job retry/cancel/concurrency and retention policy.
+8. **SSO/RBAC** — before Nightglass becomes multi-user or remotely exposed.
+9. **PULSE** — explicit entity watches and ShadowBroker event ingestion.
+10. **Dossier generator** — evidence-linked TLO-style investigative case reports.
+11. **GEO** — remain deferred until case workflows show a clear need.
