@@ -21,20 +21,60 @@ ShadowBroker supplies selected passive enrichment. This keeps collection replace
 
 ```env
 ENGINE_MODE=live
+SHADOWBROKER_ENABLED=true
 SHADOWBROKER_URL=http://127.0.0.1:8000
 SHADOWBROKER_HMAC_SECRET=replace-with-a-strong-random-secret
 SHADOWBROKER_TIMEOUT_MS=15000
 ```
 
+If `SHADOWBROKER_ENABLED` is false, TRACE skips SIGNAL cleanly instead of creating predictable failed jobs.
+
 When Nightglass and ShadowBroker run in separate containers, `SHADOWBROKER_URL` must be a private address/service name reachable from the Nightglass container. Do not publish the ShadowBroker backend to the public Internet just to make the integration work.
+
+## Opt-in Docker Compose profile
+
+Nightglass now includes an optional **backend-only** ShadowBroker profile. It references the upstream container image; the ShadowBroker source tree is not copied into this repository.
+
+Generate a signing secret and place it in your untracked `.env`:
+
+```bash
+openssl rand -hex 32
+```
+
+Then set:
+
+```env
+ENGINE_MODE=live
+SHADOWBROKER_ENABLED=true
+SHADOWBROKER_HMAC_SECRET=<generated-secret>
+```
+
+Start Nightglass with the provider:
+
+```bash
+docker compose --profile signal pull
+docker compose --profile signal up -d --build
+```
+
+The profile starts only the ShadowBroker backend. It is exposed to the Compose network on port `8000` but is **not published to the host or public network** by the Nightglass Compose file.
+
+The profile disables the unrelated mesh/global-feed features that Nightglass does not need for initial SIGNAL work. You can inspect or override the upstream image with:
+
+```env
+SHADOWBROKER_IMAGE=ghcr.io/bigbodycobain/shadowbroker-backend:latest
+```
+
+For reproducible production deployment, pin that image to an reviewed release/digest rather than tracking `latest` indefinitely.
 
 ## ShadowBroker configuration
 
-Use the same signing secret on the ShadowBroker side:
+Nightglass's Compose profile maps the same signing secret into ShadowBroker as:
 
 ```env
-OPENCLAW_HMAC_SECRET=replace-with-the-same-strong-random-secret
+OPENCLAW_HMAC_SECRET=<same-secret>
 ```
+
+When deploying ShadowBroker separately, configure that variable yourself.
 
 For the initial Nightglass integration, disable unrelated global telemetry and mesh features unless you intentionally need them:
 
@@ -81,7 +121,13 @@ Target routing:
 
 ## Connectivity test
 
-After ShadowBroker is reachable and both sides have matching HMAC configuration:
+When using the Compose profile, run the capability test from the Nightglass container so it uses the same network path as real investigations:
+
+```bash
+docker compose exec nightglass npm run signal:check
+```
+
+For a non-container local deployment:
 
 ```bash
 npm run signal:check
