@@ -51,6 +51,11 @@ export function buildTracePlan({ profile = 'standard', targetType, engines }) {
       skipped.push({ engine, reason: meta.companion ? 'companion_adapter_not_implemented' : 'orchestration_disabled' });
       continue;
     }
+    const missing = (meta.requiresEnv || []).filter((name) => !String(process.env[name] || '').trim());
+    if (missing.length && (process.env.ENGINE_MODE || 'mock') === 'live') {
+      skipped.push({ engine, reason: 'configuration_missing', missing });
+      continue;
+    }
     scheduled.push(engine);
   }
   return { profile, targetType, scheduled, skipped };
