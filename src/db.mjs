@@ -165,6 +165,10 @@ ensureColumn('evidence', "capture_id TEXT NOT NULL DEFAULT ''");
 ensureColumn('evidence', "snapshot_ref TEXT NOT NULL DEFAULT ''");
 ensureColumn('evidence', "screenshot_ref TEXT NOT NULL DEFAULT ''");
 
+ensureColumn('relationships', "reviewed_at TEXT NOT NULL DEFAULT ''");
+ensureColumn('relationships', "reviewed_by TEXT NOT NULL DEFAULT ''");
+ensureColumn('relationships', "review_notes TEXT NOT NULL DEFAULT ''");
+
 const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_subjects_case ON subjects(case_id)',
   'CREATE INDEX IF NOT EXISTS idx_findings_case ON findings(case_id)',
