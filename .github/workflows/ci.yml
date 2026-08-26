@@ -17,6 +17,13 @@ jobs:
           node-version: '22'
       - run: node --check server.mjs
       - run: node --check src/app.mjs
+      - run: node --check src/db.mjs
+      - run: node --check src/engines/registry.mjs
+      - run: node --check src/engines/shadowbroker/client.mjs
+      - run: node --check src/normalize/finding.mjs
+      - run: node --check src/orchestration/trace.mjs
+      - run: node --check src/records/sec-company.mjs
+      - run: node --check src/store/findings.mjs
       - run: node --check public/app.js
       - run: npm test
       - run: npm run smoke
