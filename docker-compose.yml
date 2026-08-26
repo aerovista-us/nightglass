@@ -9,7 +9,8 @@ services:
       DATA_DIR: /data
       ENGINE_MODE: ${ENGINE_MODE:-live}
       SPIDERFOOT_URL: http://spiderfoot:5001
-      SHADOWBROKER_URL: ${SHADOWBROKER_URL:-http://host.docker.internal:8000}
+      SHADOWBROKER_ENABLED: ${SHADOWBROKER_ENABLED:-false}
+      SHADOWBROKER_URL: ${SHADOWBROKER_URL:-http://shadowbroker:8000}
       SHADOWBROKER_HMAC_SECRET: ${SHADOWBROKER_HMAC_SECRET:-}
       SHADOWBROKER_TIMEOUT_MS: ${SHADOWBROKER_TIMEOUT_MS:-15000}
       SEC_USER_AGENT: ${SEC_USER_AGENT:-}
@@ -26,6 +27,42 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  shadowbroker:
+    profiles: ["signal"]
+    image: ${SHADOWBROKER_IMAGE:-ghcr.io/bigbodycobain/shadowbroker-backend:latest}
+    container_name: nightglass-shadowbroker
+    restart: unless-stopped
+    environment:
+      OPENCLAW_HMAC_SECRET: ${SHADOWBROKER_HMAC_SECRET:-}
+      ADMIN_KEY: ${SHADOWBROKER_ADMIN_KEY:-}
+      MESH_INFONET_FLEET_JOIN: "false"
+      MESH_INFONET_ALLOW_CLEARNET_SYNC: "false"
+      MESH_ARTI_ENABLED: "false"
+      MESH_MQTT_ENABLED: "false"
+      APRS_IS_ENABLED: "false"
+      PREDICTION_MARKETS_ENABLED: "false"
+      FINANCIAL_ENABLED: "false"
+      CROWDTHREAT_ENABLED: "false"
+      FIMI_ENABLED: "false"
+      NUFORC_ENABLED: "false"
+      NEWS_ENABLED: "false"
+      XQUIK_ENABLED: "false"
+      TELEGRAM_OSINT_ENABLED: "false"
+      GT_ANALYTICS_ENABLED: "false"
+      SHADOWBROKER_TRUST_DOCKER_BRIDGE_LOCAL_OPERATOR: "0"
+    expose:
+      - "8000"
+    volumes:
+      - shadowbroker-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
 
   capture-worker:
     profiles: ["capture"]
@@ -70,4 +107,5 @@ services:
 volumes:
   nightglass-data:
   nightglass-captures:
+  shadowbroker-data:
   spiderfoot-data:
