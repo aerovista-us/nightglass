@@ -161,6 +161,9 @@ ensureColumn('evidence', "normalized_json TEXT NOT NULL DEFAULT '{}'");
 ensureColumn('evidence', "headers_json TEXT NOT NULL DEFAULT '{}'");
 ensureColumn('evidence', "content_sha256 TEXT NOT NULL DEFAULT ''");
 ensureColumn('evidence', "verification_status TEXT NOT NULL DEFAULT 'observed'");
+ensureColumn('evidence', "capture_id TEXT NOT NULL DEFAULT ''");
+ensureColumn('evidence', "snapshot_ref TEXT NOT NULL DEFAULT ''");
+ensureColumn('evidence', "screenshot_ref TEXT NOT NULL DEFAULT ''");
 
 const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_subjects_case ON subjects(case_id)',
