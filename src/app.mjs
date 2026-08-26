@@ -65,6 +65,52 @@ function summarizeSources(caseId) {
   `).all(caseId);
 }
 
+function relationshipDetails(relationshipId) {
+  const relationship = db.prepare(`
+    SELECT r.*,
+      f.type AS from_type, f.display_value AS from_value, f.label AS from_label,
+      t.type AS to_type, t.display_value AS to_value, t.label AS to_label
+    FROM relationships r
+    JOIN entities f ON f.id=r.from_entity_id
+    JOIN entities t ON t.id=r.to_entity_id
+    WHERE r.id=?
+  `).get(relationshipId);
+  if (!relationship) return null;
+
+  const sources = db.prepare(`
+    SELECT s.id,s.finding_id,s.provider,s.source_type,s.source_url,s.query_json,s.retrieved_at,s.sha256,
+      f.engine AS finding_engine,f.kind AS finding_kind,f.value AS finding_value,f.verification_status AS finding_verification_status
+    FROM relationship_sources rs
+    JOIN sources s ON s.id=rs.source_id
+    LEFT JOIN findings f ON f.id=s.finding_id
+    WHERE rs.relationship_id=?
+    ORDER BY s.retrieved_at DESC
+  `).all(relationshipId);
+
+  const sourceIds = sources.map((source) => source.id);
+  const findingIds = [...new Set(sources.map((source) => source.finding_id).filter(Boolean))];
+  let evidence = [];
+  if (sourceIds.length || findingIds.length) {
+    const sourcePlaceholders = sourceIds.map(() => '?').join(',');
+    const findingPlaceholders = findingIds.map(() => '?').join(',');
+    const parts = [];
+    const args = [];
+    if (sourceIds.length) {
+      parts.push(`source_id IN (${sourcePlaceholders})`);
+      args.push(...sourceIds);
+    }
+    if (findingIds.length) {
+      parts.push(`finding_id IN (${findingPlaceholders})`);
+      args.push(...findingIds);
+    }
+    evidence = db.prepare(`
+      SELECT id,url,title,notes,sha256,captured_at,finding_id,source_id,provider,content_sha256,verification_status
+      FROM evidence WHERE ${parts.join(' OR ')} ORDER BY captured_at DESC
+    `).all(...args);
+  }
+  return { relationship, sources, evidence };
+}
+
 function validCaseObject(table, caseId, objectId) {
   if (!objectId) return true;
   const allowed = new Set(['findings', 'sources']);
@@ -119,6 +165,12 @@ export async function handle(req, res) {
         jobs: db.prepare('SELECT * FROM jobs WHERE case_id=? ORDER BY started_at DESC LIMIT 100').all(caseId),
         evidence: db.prepare('SELECT * FROM evidence WHERE case_id=? ORDER BY captured_at DESC').all(caseId)
       });
+    }
+
+    m = p.match(/^\/api\/relationships\/([^/]+)$/);
+    if (m && req.method === 'GET') {
+      const details = relationshipDetails(m[1]);
+      return details ? json(res, 200, details) : json(res, 404, { error: 'Relationship not found' });
     }
 
     m = p.match(/^\/api\/cases\/([^/]+)\/subjects$/);
